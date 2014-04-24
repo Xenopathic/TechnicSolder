@@ -222,20 +222,55 @@ class Mod_Controller extends Base_Controller {
 		return Response::json(array('version_id' => $old_id));
 	}
 
-	private function mod_md5($mod, $version)
+	/**
+	 * Generates a mod path without an extension
+	 */
+	private function mod_generate_path($mod_name, $version)
 	{
-		$location = Config::get('solder.repo_location').'mods/'.$mod->name.'/'.$mod->name.'-'.$version.'.zip';
+		return Config::get('solder.repo_location').'mods/'.$mod_name.'/'.$mod_name.'-'.$version;
+	}
 
+	private function mod_discover_path($mod_name, $version)
+	{
+		$location = $this->mod_generate_path($mod_name, $version);
+		// Check Local
+		if (file_exists($location.'.zip')) {
+			return $location.'.zip';
+		}
+		if (file_exists($location.'.jar')) {
+			return $location.'.jar';
+		}
+		// Check Remote
+		if (UrlUtils::check_remote_file($location.'.zip')) {
+			return $location.'.zip';
+		}
+		if (UrlUtils::check_remote_file($location.'.jar')) {
+			return $location.'.jar';
+		}
+		Log::write("ERROR", "Could not find mod located at: " . $location );
+		return "";
+	}
+	
+	private function mod_md5($mod, $version, $location = null)
+	{
+		if (is_null($location)) {
+			$location = $this->mod_discover_path($mod->name, $version);
+		}
+		if ($location == "") {
+			return "";
+		}
 		if (file_exists($location))
 			return md5_file($location);
 		else {
-			return $this->remote_mod_md5($mod, $version);
+			return $this->remote_mod_md5($mod, $version, 0, $location);
 		}
 	}
 
-	private function remote_mod_md5($mod, $version, $attempts = 0)
+	private function remote_mod_md5($mod, $version, $attempts = 0, $location = null)
 	{
-		$url = Config::get('solder.repo_location').'mods/'.$mod->name.'/'.$mod->name.'-'.$version.'.zip';
+		if (is_null($location)) {
+			$location = $this->mod_discover_path($mod->name, $version);
+		}
 		if ($attempts >= 3)
 		{
 			Log::write("ERROR", "Exceeded maximum number of attempts for remote MD5 on mod ". $mod->name ." version ".$version." located at ". $url);
@@ -247,7 +282,7 @@ class Mod_Controller extends Base_Controller {
 			return $hash;
 		else {
 			Log::write("ERROR", "Attempted to remote MD5 mod " . $mod->name . " version " . $version . " located at " . $url ." but curl response did not return 200!");
-			return $this->remote_mod_md5($mod, $version, $attempts + 1);
+			return $this->remote_mod_md5($mod, $version, $attempts + 1, $location);
 		}
 	}
 }
