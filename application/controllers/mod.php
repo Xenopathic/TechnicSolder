@@ -222,6 +222,132 @@ class Mod_Controller extends Base_Controller {
 		return Response::json(array('version_id' => $old_id));
 	}
 
+	public function action_do_rescanmods()
+	{
+		$mods_path = Config::get('solder.repo_location').'mods/';
+		if (!is_dir($mods_path)) {
+			Redirect::back()->with('error', 'Cannot find mods directory in the local filesystem, cannot scan remote repo_location');
+		}
+		if (!extension_loaded('zip')) {
+			Redirect::back()->with('error', 'PHP ZIP extensions not loaded it is required to open mods');
+		}
+		// For now it only can scan mods stored locally
+		$directory = new DirectoryIterator($mods_path);
+		$files_scanned = 0;
+		$mods_skipped = 0;
+		$mods_added = 0;
+		foreach ($directory AS $file) {
+			$status = null;
+			if ($file->isDot() || $file->isLink()) {
+				continue;
+			}
+			if ($file->isDir()) {
+				$sub_directory = new DirectoryIterator($file->getPathname());
+				foreach($sub_directory AS $sub_file) {
+					if ($sub_file->isDot() || $sub_file->isLink()) {
+						continue;
+					}
+					if (!$sub_file->isDir()) {
+						$status = $this->mod_rescan_validate_file($sub_file);
+					}
+				}
+				unset($sub_directory);
+			} else {
+				$status = $this->mod_rescan_validate_file($file);
+			}
+			if (!is_null($status)) {
+				$files_scanned++;
+				if ($status === true) {
+					$mods_added++;
+				} else if ($status === false) {
+					$mods_skipped++;
+				}
+			}
+		}
+		// @todo Provide better errors
+		return Redirect::back()->with('success', $files_scanned .' file(s) scanned, '.$mods_added.' added to the system and '.$mods_skipped.' mod(s) skipped');
+	}
+
+	private function mod_rescan_validate_file(DirectoryIterator $file) {
+		if ($file->isFile() && ($file->getExtension() == "zip" || $file->getExtension() == "jar")) {
+			$zip = new ZipArchive();
+			if ($zip->open($file->getPathname(), ZipArchive::CREATE) !== true) {
+				return "";
+			}
+			$json = $zip->getFromName("mcmod.info");
+			$zip->close();
+			unset($zip);
+			if ($json === false || !is_string($json)) {
+				return "";
+			}
+			$config = json_decode($json, true);
+			if ($config === false || !is_array($config)) {
+				return "";
+			}
+			if (is_numeric(key($config))) {
+				$config = $config[key($config)];
+			} else if (isset($config['modlist']) && is_array($config['modlist']) && count($config['modlist']) >= 1) {
+				$config = $config['modlist'][key($config['modlist'])];
+			} else {
+				// Skip because if wonky config json
+				return false;
+			}
+			if (!isset($config['name']) || !isset($config['version'])) {
+				return "";
+			}
+			$save_name = Str::slug(strtolower(str_replace(' ', '-', $config['name'])));
+			$save_version = strtolower(str_replace(' ', '-', $config['version']));
+			if (!strlen($save_name) || !strlen($save_version)) {
+				return "";
+			}
+			$save_path = $this->mod_generate_path($save_name, $save_version).'.'.$file->getExtension();
+			if ($file->getPathname() != $save_path) {
+				// Prevent overwrite
+				if (file_exists($save_path)) {
+					return "";
+				}
+				if (!is_dir(dirname($save_path))) {
+					if (!mkdir(dirname($save_path))) {
+						return "";
+					}
+				}
+				if (!rename($file->getPathname(), $save_path)) {
+					return "";
+				}
+			}
+			try {
+				// Don't account for updating at this point
+				// @todo handle updates
+				if (Mod::where('name', 'like', '%'.$save_name.'%')->count() > 0) {
+					return false;
+				}
+			} catch(Exception $ex) {
+			}
+			try {
+				// Add Mod
+				$mod = new Mod();
+				$mod->name = $save_name;
+				$mod->pretty_name = $config['name'];
+				$mod->author = (isset($config['authorList']) && is_array($config['authorList'])?implode(', ', $config['authorList']):'');
+				$mod->description = (isset($config['description'])?$config['description']:'');
+				$mod->link = (isset($config['url'])?$config['url']:'');
+				$mod->save();
+				// Add ModVersion
+				$ver = new ModVersion();
+				$ver->mod_id = $mod->id;
+				$ver->version = $save_version;
+				if ($md5 = $this->mod_md5($mod,$save_version)) {
+					$ver->md5 = $md5;
+					$ver->save();
+				}
+				return true;
+			} catch(Exception $ex) {
+				return "";
+			}
+		}
+		return "";
+	}
+
 	/**
 	 * Generates a mod path without an extension
 	 */

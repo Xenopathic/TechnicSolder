@@ -6,11 +6,24 @@
 <div class="panel panel-default">
 	<div class="panel-heading">
 	<div class="pull-right">
+		<a href="{{ URL::to('mod/rescanmods') }}" class="btn btn-xs btn-primary" title="Will scan the mods directory for any new entries and add them">Scan Mods</a>
 	    <a href="{{ URL::to('mod/create') }}" class="btn btn-xs btn-success">Add Mod</a>
 	</div>
 	Mod List
 	</div>
 	<div class="panel-body">
+		@if ($errors->all())
+			<div class="alert alert-error">
+			@foreach ($errors->all() as $error)
+				{{ $error }}<br />
+			@endforeach
+			</div>
+		@endif
+		@if (Session::has('success'))
+        	<div class="alert alert-success">
+        		{{ Session::get('success') }}
+        	</div>
+        @endif
 		@if (Session::has('deleted'))
 		<div class="alert alert-error">
 			{{ Session::get('deleted') }}
