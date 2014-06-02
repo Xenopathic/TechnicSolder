@@ -17,7 +17,7 @@
 </h2>
 <hr>
 <p>Solder currently does not support uploading files directly to it. Your repository still needs to exist and follow a strict directory structure. When you add versions the URL will be verified to make sure the file exists before it is added to Solder. The directory stucture for mods is as follow:</p>
-	<blockquote><strong>/mods/[modslug]/[modslug]-[version].zip</strong></blockquote>
+	<blockquote><strong>/mods/[modslug]/[modslug]-[version].[zip OR jar]</strong></blockquote>
 {{ Table::open() }}
 {{ Table::headers('','Version', 'MD5', 'Download URL', '') }}
 <tr id="add-row">
